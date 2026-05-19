@@ -312,6 +312,7 @@
                         dpp: parseFloat(row[10]) || 0,
                         ppn: parseFloat(row[11]) || 0,
                         ppnbm: parseFloat(row[12]) || 0,
+                        referensi: row[18] || '', // Mengambil Kolom REFERENSI (Index ke-18)
                         items: []
                     };
                     parsedData.push(currentFaktur);
@@ -394,45 +395,80 @@
             if (parsedData.length === 0) return;
 
             let xmlContent = '<?xml version="1.0" encoding="UTF-8"?>\n';
-            xmlContent += '<ImportFakturKeluaran>\n';
+            xmlContent += '<TaxInvoiceBulk xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="TaxInvoice.xsd">\n';
+            
+            // NPWP Penjual/TIN placeholder sesuai format XML yg diunggah
+            xmlContent += '  <TIN>000000000000000</TIN>\n'; 
+            xmlContent += '  <ListOfTaxInvoice>\n';
 
             parsedData.forEach(fk => {
-                xmlContent += `  <Faktur>\n`;
-                xmlContent += `    <KD_JENIS_TRANSAKSI>${escapeXml(fk.jenisTransaksi)}</KD_JENIS_TRANSAKSI>\n`;
-                xmlContent += `    <FG_PENGGANTI>${escapeXml(fk.pengganti)}</FG_PENGGANTI>\n`;
-                xmlContent += `    <NOMOR_FAKTUR>${escapeXml(fk.nomorFaktur)}</NOMOR_FAKTUR>\n`;
-                xmlContent += `    <MASA_PAJAK>${escapeXml(fk.masaPajak)}</MASA_PAJAK>\n`;
-                xmlContent += `    <TAHUN_PAJAK>${escapeXml(fk.tahunPajak)}</TAHUN_PAJAK>\n`;
-                xmlContent += `    <TANGGAL_FAKTUR>${escapeXml(fk.tglFaktur)}</TANGGAL_FAKTUR>\n`;
-                xmlContent += `    <NPWP>${escapeXml(fk.npwp)}</NPWP>\n`;
-                xmlContent += `    <NAMA>${escapeXml(fk.nama)}</NAMA>\n`;
-                xmlContent += `    <ALAMAT_LENGKAP>${escapeXml(fk.alamat)}</ALAMAT_LENGKAP>\n`;
-                xmlContent += `    <JUMLAH_DPP>${fk.dpp}</JUMLAH_DPP>\n`;
-                xmlContent += `    <JUMLAH_PPN>${fk.ppn}</JUMLAH_PPN>\n`;
-                xmlContent += `    <JUMLAH_PPNBM>${fk.ppnbm}</JUMLAH_PPNBM>\n`;
-                
-                if (fk.items && fk.items.length > 0) {
-                    xmlContent += `    <Detail>\n`;
-                    fk.items.forEach(item => {
-                        xmlContent += `      <Barang>\n`;
-                        xmlContent += `        <KODE_OBJEK>${escapeXml(item.kodeObjek)}</KODE_OBJEK>\n`;
-                        xmlContent += `        <NAMA>${escapeXml(item.namaBarang)}</NAMA>\n`;
-                        xmlContent += `        <HARGA_SATUAN>${item.hargaSatuan}</HARGA_SATUAN>\n`;
-                        xmlContent += `        <JUMLAH_BARANG>${item.jumlahBarang}</JUMLAH_BARANG>\n`;
-                        xmlContent += `        <HARGA_TOTAL>${item.hargaTotal}</HARGA_TOTAL>\n`;
-                        xmlContent += `        <DISKON>${item.diskon}</DISKON>\n`;
-                        xmlContent += `        <DPP>${item.dpp}</DPP>\n`;
-                        xmlContent += `        <PPN>${item.ppn}</PPN>\n`;
-                        xmlContent += `        <TARIF_PPNBM>${item.tarifPpnbm}</TARIF_PPNBM>\n`;
-                        xmlContent += `        <PPNBM>${item.ppnbm}</PPNBM>\n`;
-                        xmlContent += `      </Barang>\n`;
-                    });
-                    xmlContent += `    </Detail>\n`;
+                // Convert Date format from DD/MM/YYYY to YYYY-MM-DD
+                let formattedDate = fk.tglFaktur;
+                if (formattedDate.includes('/')) {
+                    const parts = formattedDate.split('/');
+                    const d = parts[0].padStart(2, '0');
+                    const m = parts[1].padStart(2, '0');
+                    const y = parts[2];
+                    formattedDate = `${y}-${m}-${d}`;
                 }
-                xmlContent += `  </Faktur>\n`;
+
+                const invoiceOpt = fk.pengganti === '0' ? 'Normal' : 'Replacement';
+                
+                // Format NPWP Pembeli & Tambahan kode cabang (16 digit + cabang)
+                const buyerTinStr = fk.npwp.replace(/[^0-9]/g, '');
+                const buyerIdTku = buyerTinStr.length >= 15 ? buyerTinStr + "000000" : "000000000000000000000";
+
+                xmlContent += `    <TaxInvoice>\n`;
+                xmlContent += `      <TaxInvoiceDate>${formattedDate}</TaxInvoiceDate>\n`;
+                xmlContent += `      <TaxInvoiceOpt>${invoiceOpt}</TaxInvoiceOpt>\n`;
+                xmlContent += `      <TrxCode>${escapeXml(fk.jenisTransaksi)}</TrxCode>\n`;
+                xmlContent += `      <AddInfo></AddInfo>\n`;
+                xmlContent += `      <CustomDoc/>\n`;
+                xmlContent += `      <CustomDocMonthYear/>\n`;
+                xmlContent += `      <RefDesc>${escapeXml(fk.referensi)}</RefDesc>\n`;
+                xmlContent += `      <FacilityStamp/>\n`;
+                xmlContent += `      <SellerIDTKU>0000000000000000000000</SellerIDTKU>\n`; // Default Placeholder
+                xmlContent += `      <BuyerTin>${escapeXml(buyerTinStr)}</BuyerTin>\n`;
+                xmlContent += `      <BuyerDocument>TIN</BuyerDocument>\n`;
+                xmlContent += `      <BuyerCountry>IDN</BuyerCountry>\n`;
+                xmlContent += `      <BuyerDocumentNumber/>\n`;
+                xmlContent += `      <BuyerName>${escapeXml(fk.nama)}</BuyerName>\n`;
+                xmlContent += `      <BuyerAdress>${escapeXml(fk.alamat)}</BuyerAdress>\n`;
+                xmlContent += `      <BuyerEmail></BuyerEmail>\n`;
+                xmlContent += `      <BuyerIDTKU>${buyerIdTku}</BuyerIDTKU>\n`;
+
+                if (fk.items && fk.items.length > 0) {
+                    xmlContent += `      <ListOfGoodService>\n`;
+                    fk.items.forEach(item => {
+                        // Kalkulasi VATRate otomatis dari persentase (PPN / DPP * 100)
+                        let vatRate = 0;
+                        if (item.dpp > 0) {
+                            vatRate = Math.round((item.ppn / item.dpp) * 100);
+                        }
+
+                        xmlContent += `        <GoodService>\n`;
+                        xmlContent += `          <Opt>B</Opt>\n`;
+                        xmlContent += `          <Code>${escapeXml(item.kodeObjek || '000000')}</Code>\n`;
+                        xmlContent += `          <Name>${escapeXml(item.namaBarang)}</Name>\n`;
+                        xmlContent += `          <Unit>UM.0030</Unit>\n`;
+                        xmlContent += `          <Price>${Math.round(item.hargaSatuan)}</Price>\n`;
+                        xmlContent += `          <Qty>${item.jumlahBarang}</Qty>\n`;
+                        xmlContent += `          <TotalDiscount>${Math.round(item.diskon)}</TotalDiscount>\n`;
+                        xmlContent += `          <TaxBase>${Math.round(item.dpp)}</TaxBase>\n`;
+                        xmlContent += `          <OtherTaxBase>${Math.round(item.dpp)}</OtherTaxBase>\n`;
+                        xmlContent += `          <VATRate>${vatRate}</VATRate>\n`;
+                        xmlContent += `          <VAT>${Math.round(item.ppn)}</VAT>\n`;
+                        xmlContent += `          <STLGRate>${Math.round(item.tarifPpnbm)}</STLGRate>\n`;
+                        xmlContent += `          <STLG>${Math.round(item.ppnbm)}</STLG>\n`;
+                        xmlContent += `        </GoodService>\n`;
+                    });
+                    xmlContent += `      </ListOfGoodService>\n`;
+                }
+                xmlContent += `    </TaxInvoice>\n`;
             });
 
-            xmlContent += '</ImportFakturKeluaran>';
+            xmlContent += '  </ListOfTaxInvoice>\n';
+            xmlContent += '</TaxInvoiceBulk>';
 
             // Create Blob and trigger download
             const blob = new Blob([xmlContent], { type: 'application/xml' });
