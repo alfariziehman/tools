@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PajakTools - CSV to Coretax XML</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#0f172a',
+                        card: '#1e293b',
+                        primary: '#3b82f6',
+                        secondary: '#8b5cf6',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- PapaParse for robust CSV Parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #e2e8f0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .drop-zone {
+            border: 2px dashed rgba(59, 130, 246, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .drop-zone.dragover {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569; 
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="sticky top-0 z-50 glass-panel border-b border-gray-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg">
+                        <i class="fa-solid fa-file-invoice-dollar text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                            PajakTools Coretax
+                        </h1>
+                        <p class="text-xs text-gray-400">CSV e-Faktur to XML Converter</p>
+                    </div>
+                </div>
+                <div class="hidden sm:block">
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                        <i class="fa-solid fa-bolt mr-1"></i> 100% Client-Side Processing
+                    </span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        
+        <!-- Upload Section -->
+        <div class="glass-panel rounded-2xl p-6 sm:p-8 mb-8 shadow-xl">
+            <div class="text-center mb-6">
+                <h2 class="text-2xl font-bold text-white mb-2">Upload File CSV e-Faktur</h2>
+                <p class="text-gray-400">Sistem akan secara otomatis memisahkan Faktur Keluaran (FK) dan Objek Faktur (OF) untuk menyusun format XML.</p>
+            </div>
+
+            <div id="dropZone" class="drop-zone rounded-xl p-10 text-center cursor-pointer hover:bg-slate-800/50 relative overflow-hidden group">
+                <input type="file" id="fileInput" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                <div class="relative z-0 pointer-events-none">
+                    <div class="w-20 h-20 mx-auto bg-slate-800 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                        <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-500"></i>
+                    </div>
+                    <h3 class="text-lg font-medium text-gray-200 mb-1">Pilih atau Tarik File Kesini</h3>
+                    <p class="text-sm text-gray-500">Mendukung format .CSV dari DJP Online / e-Faktur</p>
+                </div>
+            </div>
+
+            <!-- File Info (Hidden initially) -->
+            <div id="fileInfo" class="hidden mt-6 flex items-center justify-between bg-slate-800 rounded-lg p-4 border border-slate-700">
+                <div class="flex items-center gap-4">
+                    <i class="fa-solid fa-file-csv text-3xl text-emerald-500"></i>
+                    <div>
+                        <p id="fileName" class="font-medium text-gray-200">filename.csv</p>
+                        <p id="fileSize" class="text-xs text-gray-400">0 KB</p>
+                    </div>
+                </div>
+                <button id="resetBtn" class="text-red-400 hover:text-red-300 transition-colors px-3 py-1 bg-red-400/10 rounded-md">
+                    <i class="fa-solid fa-trash-can mr-1"></i> Ganti
+                </button>
+            </div>
+        </div>
+
+        <!-- Processing Stats & Actions (Hidden initially) -->
+        <div id="resultSection" class="hidden animate-[fadeIn_0.5s_ease-out]">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="glass-panel rounded-xl p-6 border-l-4 border-blue-500">
+                    <p class="text-sm text-gray-400 mb-1">Total Faktur (FK)</p>
+                    <h3 id="statTotalFaktur" class="text-3xl font-bold text-white">0</h3>
+                </div>
+                <div class="glass-panel rounded-xl p-6 border-l-4 border-purple-500">
+                    <p class="text-sm text-gray-400 mb-1">Total Item (OF)</p>
+                    <h3 id="statTotalItem" class="text-3xl font-bold text-white">0</h3>
+                </div>
+                <div class="glass-panel rounded-xl p-6 border-l-4 border-emerald-500 flex flex-col justify-center">
+                    <button id="downloadXmlBtn" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-medium py-3 px-4 rounded-lg shadow-lg hover:shadow-blue-500/25 transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-download"></i> Download XML Coretax
+                    </button>
+                </div>
+            </div>
+
+            <!-- Preview Data -->
+            <div class="glass-panel rounded-2xl overflow-hidden shadow-xl flex flex-col h-[500px]">
+                <div class="p-4 border-b border-gray-700 bg-slate-800/50 flex justify-between items-center">
+                    <h3 class="font-semibold text-gray-200"><i class="fa-solid fa-table-list mr-2 text-blue-400"></i> Preview Data Parsed</h3>
+                    <span class="text-xs bg-slate-700 text-gray-300 px-2 py-1 rounded">Maksimal menampilkan 50 faktur pertama</span>
+                </div>
+                <div class="overflow-auto flex-grow p-0">
+                    <table class="w-full text-sm text-left text-gray-400">
+                        <thead class="text-xs text-gray-300 uppercase bg-slate-800/80 sticky top-0 z-10">
+                            <tr>
+                                <th scope="col" class="px-6 py-3">No. Faktur</th>
+                                <th scope="col" class="px-6 py-3">Tanggal</th>
+                                <th scope="col" class="px-6 py-3">NPWP Pembeli</th>
+                                <th scope="col" class="px-6 py-3">Nama Pembeli</th>
+                                <th scope="col" class="px-6 py-3 text-right">DPP</th>
+                                <th scope="col" class="px-6 py-3 text-right">PPN</th>
+                                <th scope="col" class="px-6 py-3 text-center">Jml Item</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewTableBody" class="divide-y divide-gray-800">
+                            <!-- Rows will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="border-t border-gray-800 bg-slate-900 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 text-center">
+            <p class="text-sm text-gray-500">PajakTools - Single File App. Data tidak pernah meninggalkan browser Anda.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Global variables
+        let parsedData = []; // Will store hierarchical data: [{ fk: {...}, items: [...] }]
+        
+        // DOM Elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileNameEl = document.getElementById('fileName');
+        const fileSizeEl = document.getElementById('fileSize');
+        const resetBtn = document.getElementById('resetBtn');
+        const resultSection = document.getElementById('resultSection');
+        const previewTableBody = document.getElementById('previewTableBody');
+        const statTotalFaktur = document.getElementById('statTotalFaktur');
+        const statTotalItem = document.getElementById('statTotalItem');
+        const downloadXmlBtn = document.getElementById('downloadXmlBtn');
+
+        // Number formatter
+        const formatNumber = (num) => {
+            return new Intl.NumberFormat('id-ID').format(num);
+        };
+
+        // File size formatter
+        const formatFileSize = (bytes) => {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        };
+
+        // Drag and drop events
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        });
+
+        fileInput.addEventListener('change', function() {
+            handleFiles(this.files);
+        });
+
+        resetBtn.addEventListener('click', () => {
+            fileInput.value = '';
+            fileInfo.classList.add('hidden');
+            resultSection.classList.add('hidden');
+            dropZone.classList.remove('hidden');
+            parsedData = [];
+        });
+
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            const file = files[0];
+            
+            if (!file.name.toLowerCase().endsWith('.csv')) {
+                alert('Mohon unggah file CSV e-Faktur yang valid.');
+                return;
+            }
+
+            fileNameEl.textContent = file.name;
+            fileSizeEl.textContent = formatFileSize(file.size);
+            
+            dropZone.classList.add('hidden');
+            fileInfo.classList.remove('hidden');
+
+            processCSV(file);
+        }
+
+        function processCSV(file) {
+            // Using PapaParse for robust CSV parsing (handles commas inside quotes)
+            Papa.parse(file, {
+                header: false,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    buildHierarchicalData(results.data);
+                },
+                error: function(err) {
+                    alert('Gagal membaca CSV: ' + err.message);
+                }
+            });
+        }
+
+        function buildHierarchicalData(rows) {
+            parsedData = [];
+            let currentFaktur = null;
+            let totalItemsCount = 0;
+
+            // Definition based on standard e-Faktur export
+            // FK headers: Type, KD_JENIS, FG_PENGGANTI, NOMOR_FAKTUR, MASA, TAHUN, TGL, NPWP, NAMA, ALAMAT, DPP, PPN, PPNBM, ...
+            // OF headers: Type, KODE_OBJEK, NAMA, HARGA_SATUAN, JUMLAH, HARGA_TOTAL, DISKON, DPP, PPN, TARIF_PPNBM, PPNBM
+            
+            rows.forEach(row => {
+                const type = row[0] ? row[0].trim() : '';
+
+                if (type === 'FK') {
+                    // Ignore header row
+                    if (row[1] === 'KD_JENIS_TRANSAKSI') return;
+
+                    currentFaktur = {
+                        jenisTransaksi: row[1] || '',
+                        pengganti: row[2] || '',
+                        nomorFaktur: row[3] || '',
+                        masaPajak: row[4] || '',
+                        tahunPajak: row[5] || '',
+                        tglFaktur: row[6] || '',
+                        npwp: row[7] || '',
+                        nama: row[8] || '',
+                        alamat: row[9] || '',
+                        dpp: parseFloat(row[10]) || 0,
+                        ppn: parseFloat(row[11]) || 0,
+                        ppnbm: parseFloat(row[12]) || 0,
+                        items: []
+                    };
+                    parsedData.push(currentFaktur);
+                } 
+                else if (type === 'OF') {
+                    if (row[1] === 'KODE_OBJEK') return; // Ignore header
+
+                    if (currentFaktur) {
+                        const item = {
+                            kodeObjek: row[1] || '',
+                            namaBarang: row[2] || '',
+                            hargaSatuan: parseFloat(row[3]) || 0,
+                            jumlahBarang: parseFloat(row[4]) || 0,
+                            hargaTotal: parseFloat(row[5]) || 0,
+                            diskon: parseFloat(row[6]) || 0,
+                            dpp: parseFloat(row[7]) || 0,
+                            ppn: parseFloat(row[8]) || 0,
+                            tarifPpnbm: parseFloat(row[9]) || 0,
+                            ppnbm: parseFloat(row[10]) || 0
+                        };
+                        currentFaktur.items.push(item);
+                        totalItemsCount++;
+                    }
+                }
+            });
+
+            // Update UI
+            statTotalFaktur.textContent = formatNumber(parsedData.length);
+            statTotalItem.textContent = formatNumber(totalItemsCount);
+            
+            renderPreviewTable();
+            resultSection.classList.remove('hidden');
+        }
+
+        function renderPreviewTable() {
+            previewTableBody.innerHTML = '';
+            
+            // Limit preview to max 50 rows to keep UI responsive
+            const previewData = parsedData.slice(0, 50);
+            
+            previewData.forEach(fk => {
+                const tr = document.createElement('tr');
+                tr.className = 'bg-slate-800/30 hover:bg-slate-700/50 transition-colors';
+                
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-medium text-blue-400 whitespace-nowrap">${fk.nomorFaktur}</td>
+                    <td class="px-6 py-4">${fk.tglFaktur}</td>
+                    <td class="px-6 py-4">${fk.npwp}</td>
+                    <td class="px-6 py-4 truncate max-w-[200px]" title="${fk.nama}">${fk.nama}</td>
+                    <td class="px-6 py-4 text-right">Rp ${formatNumber(fk.dpp)}</td>
+                    <td class="px-6 py-4 text-right">Rp ${formatNumber(fk.ppn)}</td>
+                    <td class="px-6 py-4 text-center">
+                        <span class="bg-slate-700 text-white text-xs py-1 px-2 rounded-full">${fk.items.length}</span>
+                    </td>
+                `;
+                previewTableBody.appendChild(tr);
+            });
+
+            if (parsedData.length === 0) {
+                previewTableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-gray-500">Tidak ada data faktur yang ditemukan.</td></tr>`;
+            }
+        }
+
+        // XML Generator matching Coretax/e-Faktur general schema standards
+        function escapeXml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe.toString()
+                 .replace(/[<>&'"]/g, function (c) {
+                     switch (c) {
+                         case '<': return '&lt;';
+                         case '>': return '&gt;';
+                         case '&': return '&amp;';
+                         case '\'': return '&apos;';
+                         case '"': return '&quot;';
+                     }
+                 });
+        }
+
+        function generateXML() {
+            if (parsedData.length === 0) return;
+
+            let xmlContent = '<?xml version="1.0" encoding="UTF-8"?>\n';
+            xmlContent += '<ImportFakturKeluaran>\n';
+
+            parsedData.forEach(fk => {
+                xmlContent += `  <Faktur>\n`;
+                xmlContent += `    <KD_JENIS_TRANSAKSI>${escapeXml(fk.jenisTransaksi)}</KD_JENIS_TRANSAKSI>\n`;
+                xmlContent += `    <FG_PENGGANTI>${escapeXml(fk.pengganti)}</FG_PENGGANTI>\n`;
+                xmlContent += `    <NOMOR_FAKTUR>${escapeXml(fk.nomorFaktur)}</NOMOR_FAKTUR>\n`;
+                xmlContent += `    <MASA_PAJAK>${escapeXml(fk.masaPajak)}</MASA_PAJAK>\n`;
+                xmlContent += `    <TAHUN_PAJAK>${escapeXml(fk.tahunPajak)}</TAHUN_PAJAK>\n`;
+                xmlContent += `    <TANGGAL_FAKTUR>${escapeXml(fk.tglFaktur)}</TANGGAL_FAKTUR>\n`;
+                xmlContent += `    <NPWP>${escapeXml(fk.npwp)}</NPWP>\n`;
+                xmlContent += `    <NAMA>${escapeXml(fk.nama)}</NAMA>\n`;
+                xmlContent += `    <ALAMAT_LENGKAP>${escapeXml(fk.alamat)}</ALAMAT_LENGKAP>\n`;
+                xmlContent += `    <JUMLAH_DPP>${fk.dpp}</JUMLAH_DPP>\n`;
+                xmlContent += `    <JUMLAH_PPN>${fk.ppn}</JUMLAH_PPN>\n`;
+                xmlContent += `    <JUMLAH_PPNBM>${fk.ppnbm}</JUMLAH_PPNBM>\n`;
+                
+                if (fk.items && fk.items.length > 0) {
+                    xmlContent += `    <Detail>\n`;
+                    fk.items.forEach(item => {
+                        xmlContent += `      <Barang>\n`;
+                        xmlContent += `        <KODE_OBJEK>${escapeXml(item.kodeObjek)}</KODE_OBJEK>\n`;
+                        xmlContent += `        <NAMA>${escapeXml(item.namaBarang)}</NAMA>\n`;
+                        xmlContent += `        <HARGA_SATUAN>${item.hargaSatuan}</HARGA_SATUAN>\n`;
+                        xmlContent += `        <JUMLAH_BARANG>${item.jumlahBarang}</JUMLAH_BARANG>\n`;
+                        xmlContent += `        <HARGA_TOTAL>${item.hargaTotal}</HARGA_TOTAL>\n`;
+                        xmlContent += `        <DISKON>${item.diskon}</DISKON>\n`;
+                        xmlContent += `        <DPP>${item.dpp}</DPP>\n`;
+                        xmlContent += `        <PPN>${item.ppn}</PPN>\n`;
+                        xmlContent += `        <TARIF_PPNBM>${item.tarifPpnbm}</TARIF_PPNBM>\n`;
+                        xmlContent += `        <PPNBM>${item.ppnbm}</PPNBM>\n`;
+                        xmlContent += `      </Barang>\n`;
+                    });
+                    xmlContent += `    </Detail>\n`;
+                }
+                xmlContent += `  </Faktur>\n`;
+            });
+
+            xmlContent += '</ImportFakturKeluaran>';
+
+            // Create Blob and trigger download
+            const blob = new Blob([xmlContent], { type: 'application/xml' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            
+            // Format filename with current date
+            const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+            a.download = `Coretax_PK_${dateStr}.xml`;
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            // UI Feedback
+            const originalText = downloadXmlBtn.innerHTML;
+            downloadXmlBtn.innerHTML = '<i class="fa-solid fa-check text-green-400"></i> Berhasil Diunduh!';
+            downloadXmlBtn.classList.replace('from-blue-600', 'from-emerald-600');
+            downloadXmlBtn.classList.replace('to-purple-600', 'to-teal-600');
+            
+            setTimeout(() => {
+                downloadXmlBtn.innerHTML = originalText;
+                downloadXmlBtn.classList.replace('from-emerald-600', 'from-blue-600');
+                downloadXmlBtn.classList.replace('to-teal-600', 'to-purple-600');
+            }, 3000);
+        }
+
+        downloadXmlBtn.addEventListener('click', generateXML);
+    </script>
+</body>
+</html>
